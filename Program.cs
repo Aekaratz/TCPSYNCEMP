@@ -26,20 +26,14 @@ namespace SyncDataApp
         private static readonly WolfApproveCoreSyncDataContext db = new WolfApproveCoreSyncDataContext();
         //string EmployeeFile = ConfigurationManager.AppSettings["EmployeeFile"];
 
-        
-        public static void Main(string[] args)
+
+        public static void Main(string[] args )
         {
 
             try
             {
                 string EmployeeFile = ConfigurationManager.AppSettings["EmployeeFile"];
                 ReadCsvData(EmployeeFile);
-               // List<EmployeeCSVData> csvData = ReadCsvData(EmployeeFile);
-
-                Console.WriteLine("SyncEmp success");
-                Logger.WriteLog("SyncEmp success");
-                SentEmail.SentToEmail();
-                
 
             }
             catch (Exception e)
@@ -204,6 +198,7 @@ namespace SyncDataApp
                 Logger.DeleteLog();
                 Console.WriteLine("Waiting ........... ");
                 Logger.WriteLog("Start");
+                int CounterError = 0;
                 using (TextFieldParser csvParser = new TextFieldParser(EmployeeFile))
                 {
                     csvParser.CommentTokens = new string[] { "#" };
@@ -212,10 +207,11 @@ namespace SyncDataApp
 
                     // Skip the row with the column names
                     csvParser.ReadLine();
-
+                    
                     while (!csvParser.EndOfData)
                     {
                         // Processing row
+
                         string[] fields = csvParser.ReadFields();
 
                         string[] keywordActive = { "true", "1", "Active" };
@@ -240,18 +236,20 @@ namespace SyncDataApp
                                     fields[i] = "Null";
                                 }
                             }
-                           
+
                             Logger.WriteLog("***************************************************************************************************************************\n");
-                            Logger.WriteLog($"ERRORLISTEMPLOYEE==NULL\n");
+                            Logger.WriteLog($"ERRORLISTEMPLOYEE(ข้อมูลใน csv ไม่ครบถ้วน)\n");
                             Logger.WriteLog($"WORK_ID:{fields[0]}\t UserEmail:{fields[1]}\t FULL_NAME_TH: {fields[2]}\t  FULL_NAME_EN:{fields[3]}\t LOGIN_EMAIL:{fields[4]}\t STATUS:{fields[5]}\t PositionNameEN::{fields[6]}\t PosEN::{fields[7]}\t PosLvsEN::{fields[8]}\t DepCode:{fields[9]}\t Position / ตำแหน่ง-Job Informationข้อมูลงาน:{fields[10]}\t REPORT_TO::{fields[11]}\t Default EN:{fields[12]}\t Phone Number / หมายเลขโทรศัพท์-Phone Information / ข้อมูลโทรศัพท์:{fields[13]}\t");
+                            CounterError ++ ;
                             continue;
                         }
 
                         if (fields[0].Length > 10)
                         {
                             Logger.WriteLog("***************************************************************************************************************************\n");
-                            Logger.WriteLog($"WORK_ID String >10\n");
+                            Logger.WriteLog($"WORK_ID String >10 (ตัวอักษร WORK_ID มากกว่า10ตัวอักษร)\n");
                             Logger.WriteLog($"WORK_ID:{fields[0]}\t UserEmail:{fields[1]}\t FULL_NAME_TH: {fields[2]}\t  FULL_NAME_EN:{fields[3]}\t LOGIN_EMAIL:{fields[4]}\t STATUS:{fields[5]}\t PositionNameEN::{fields[6]}\t PosEN::{fields[7]}\t PosLvsEN::{fields[8]}\t DepCode:{fields[9]}\t Position / ตำแหน่ง-Job Informationข้อมูลงาน:{fields[10]}\t REPORT_TO::{fields[11]}\t Default EN:{fields[12]}\t Phone Number / หมายเลขโทรศัพท์-Phone Information / ข้อมูลโทรศัพท์:{fields[13]}\t");
+                            CounterError ++ ;   
                             continue;
                         }
 
@@ -297,25 +295,25 @@ namespace SyncDataApp
                             DefaultEn = fields[12],
                             PhoneNumber = fields[13]
 
-                           
+
                         };
 
                         employees.Add(emp);
 
                         Console.WriteLine($"ReadData => Work ID: {emp.WorkId}, Username: {emp.UserEmail}");
-                       
+
                     }
 
                 }
-                ManageEmployee(employees);
+                ManageEmployee(employees , CounterError);
 
-                return employees; 
+                return employees;
             }
             catch (Exception e)
             {
-              
+
                 Console.WriteLine(e.Message);
-                return null; 
+                return null;
             }
 
         }
@@ -407,9 +405,11 @@ namespace SyncDataApp
             }
 
         }
-        static void ManageEmployee(List<EmployeeCSVData> employees)
+        static void ManageEmployee(List<EmployeeCSVData> employees, int CounterError)
         {
             int roundCounter = 0;
+            int departMentnull = 0;
+            int positionName = 0;
             foreach (var employeeDto in employees)
             {
                 Mstemployee data = db.Mstemployees.FirstOrDefault(a => a.EmployeeCode.Equals(employeeDto.WorkId));
@@ -418,11 +418,10 @@ namespace SyncDataApp
                 var reportto = db.Mstemployees.FirstOrDefault(a => a.EmployeeCode.Contains(employeeDto.ReportTo));
                 if (data == null)
                 {
+
                     db.Mstemployees.Add(new Mstemployee
                     {
-                        //EmpLevel = employeeDto.EmpLevel,
-                        //EmployeeLevel = positioLvs.PositionLevelId,
-                        DivisionId = departmentcode.DepartmentId,
+                        DivisionId = departmentcode != null ? departmentcode.DivisionId : null,
                         EmployeeCode = employeeDto.WorkId,
                         Username = employeeDto.UserEmail,
                         NameTh = employeeDto.FullNameTh,
@@ -430,8 +429,8 @@ namespace SyncDataApp
                         Email = employeeDto.LoginEmail,
                         IsActive = employeeDto.Status,
                         ReportToEmpCode = employeeDto.ReportTo,
-                        PositionId = position.PositionId,
-                        DepartmentId = departmentcode.DepartmentId,
+                        PositionId = position != null ? position.PositionId : null,
+                        DepartmentId = departmentcode != null ? departmentcode.DepartmentId : null,
                         Adtitle = employeeDto.PhoneNumber,
                         CreatedDate = DateTime.Today,
                         CreatedBy = "System",
@@ -440,93 +439,84 @@ namespace SyncDataApp
                         AccountId = 1,
                         Lang = "EN"
                     });
-                }
-                //else if (reportto == null)
-                //{
-                //    //data.EmpLevel = employeeDto.EmpLevel;
-                //    //data.EmployeeLevel = positioLvs.PositionLevelId;
-                //    data.DivisionId = departmentcode.DivisionId;
-                //    data.EmpLevel = employeeDto.PosLvsEn;
-                //    data.EmployeeCode = employeeDto.WorkId;
-                //    data.Username = employeeDto.UserEmail;
-                //    data.NameTh = employeeDto.FullNameTh;
-                //    data.NameEn = employeeDto.FullNameEn;
-                //    data.Email = employeeDto.LoginEmail;
-                //    data.IsActive = employeeDto.Status;
-                //    data.ReportToEmpCode = null;
-                //    data.PositionId = position.PositionId;
-                //    data.DepartmentId = departmentcode.DepartmentId;
-                //    data.Adtitle = employeeDto.PhoneNumber;
-                //    data.CreatedDate = data.CreatedDate;
-                //    data.CreatedBy = "System";
-                //    data.ModifiedDate = DateTime.Today;
-                //    data.ModifiedBy = "System";
-                //    data.AccountId = 1;
-                //    data.Lang = "EN";
-                //    data.SignPicPath = data.SignPicPath;
-                //}
-
-                else
-                {
-                    
                     if (departmentcode == null)
                     {
                         Logger.WriteLog("***************************************************************************************************************************\n");
-                        Logger.WriteLog($"ERRORLISTEMPLOYEE DEPARTMENT IN DATABASE NULL \n");
-                        Logger.WriteLog($"EmplyeeCode:{data.EmployeeCode}\tUSERNAME:{data.Username}\tEmployeeName:{data.NameEn}\t{data.NameEn}\tdepartmemtId:Null Division : Null");
-                        data.DivisionId = null;
-                        data.EmployeeCode = employeeDto.WorkId;
-                        data.Username = employeeDto.UserEmail;
-                        data.NameTh = employeeDto.FullNameTh;
-                        data.NameEn = employeeDto.FullNameEn;
-                        data.Email = employeeDto.LoginEmail;
-                        data.IsActive = employeeDto.Status;
-                       // data.ReportToEmpCode = reportto.EmployeeId.ToString();
-                        data.ReportToEmpCode = employeeDto.ReportTo;
-                        data.PositionId = position.PositionId;
-                        data.DepartmentId = null;
-                        data.Adtitle = employeeDto.PhoneNumber;
-                        data.CreatedDate = data.CreatedDate;
-                        data.CreatedBy = "System";
-                        data.ModifiedDate = DateTime.Today;
-                        data.ModifiedBy = "System";
-                        data.AccountId = 1;
-                        data.Lang = "EN";
-                        data.SignPicPath = data.SignPicPath;
+                        Logger.WriteLog($"Update");
+                        Logger.WriteLog($"This department code does not exist in the database.\n");
+                        Logger.WriteLog($"DepCode:{employeeDto.DepCode}");
+                        departMentnull++;
                     }
-                    else
+                    else if (position == null)
                     {
-                        data.DivisionId = departmentcode.DivisionId;
-                        data.EmployeeCode = employeeDto.WorkId;
-                        data.Username = employeeDto.UserEmail;
-                        data.NameTh = employeeDto.FullNameTh;
-                        data.NameEn = employeeDto.FullNameEn;
-                        data.Email = employeeDto.LoginEmail;
-                        data.IsActive = employeeDto.Status;
-                        //data.ReportToEmpCode = reportto.EmployeeId.ToString();
-                        data.ReportToEmpCode = employeeDto.ReportTo;
-                        data.PositionId = position.PositionId;
-                        data.DepartmentId = departmentcode.DepartmentId;
-                        data.Adtitle = employeeDto.PhoneNumber;
-                        data.CreatedDate = data.CreatedDate;
-                        data.CreatedBy = "System";
-                        data.ModifiedDate = DateTime.Today;
-                        data.ModifiedBy = "System";
-                        data.AccountId = 1;
-                        data.Lang = "EN";
-                        data.SignPicPath = data.SignPicPath;
+
+                        Logger.WriteLog("***************************************************************************************************************************\n");
+                        Logger.WriteLog($"Update");
+                        Logger.WriteLog($"This position Name does not exist in the database.\n");
+                        Logger.WriteLog($"Position Name:{employeeDto.PositionNameEn}");
+                        positionName++;
                     }
-                    
+                }
+                else
+                {
+
+                    data.DivisionId = departmentcode != null ? departmentcode.DivisionId : null;
+                    data.EmployeeCode = employeeDto.WorkId;
+                    data.Username = employeeDto.UserEmail;
+                    data.NameTh = employeeDto.FullNameTh;
+                    data.NameEn = employeeDto.FullNameEn;
+                    data.Email = employeeDto.LoginEmail;
+                    data.IsActive = employeeDto.Status;
+                    // data.ReportToEmpCode = reportto.EmployeeId.ToString();
+                    data.ReportToEmpCode = employeeDto.ReportTo;
+                    data.PositionId = position != null ? position.PositionId : null;
+                    data.DepartmentId = departmentcode != null ? departmentcode.DepartmentId : null;
+                    data.Adtitle = employeeDto.PhoneNumber;
+                    data.CreatedDate = data.CreatedDate;
+                    data.CreatedBy = "System";
+                    data.ModifiedDate = DateTime.Today;
+                    data.ModifiedBy = "System";
+                    data.AccountId = 1;
+                    data.Lang = "EN";
+                    data.SignPicPath = data.SignPicPath;
+
+                    if (departmentcode == null)
+                    {
+                        Logger.WriteLog("***************************************************************************************************************************\n");
+                        Logger.WriteLog($"Update");
+                        Logger.WriteLog($"This department code does not exist in the database.\n");
+                        Logger.WriteLog($"DepCode:{employeeDto.DepCode}");
+                        departMentnull++;
+                    }
+                    else if (position == null)
+                    {
+                        Logger.WriteLog("***************************************************************************************************************************\n");
+                        Logger.WriteLog($"Update");
+                        Logger.WriteLog($"This position Name does not exist in the database.\n");
+                        Logger.WriteLog($"Position Name:{employeeDto.PositionNameEn}");
+                        positionName++;
+                    }
+
                 }
                 db.SaveChanges();
                 roundCounter++;
+               
                 Console.WriteLine($"Update Completed round: {roundCounter} \t EmployeeName:{employeeDto.FullNameEn}");
 
             }
+           
+            Console.WriteLine($"SyncEmp Fail Check data in CSV :{CounterError} row");
+            Console.WriteLine($"This department code does not exist in the database. :{departMentnull} row");
+            Console.WriteLine($"This position Name does not exist in the database. :{positionName} row");
+            Console.WriteLine($"SyncEmp Success :{roundCounter} row");
 
+            Logger.WriteLog($"SyncEmp Fail  Check data in CSV :{CounterError} row");
+            Logger.WriteLog($"This department code does not exist in the database. :{departMentnull} row");
+            Logger.WriteLog($"This position Name does not exist in the database. :{positionName} row");
+            Logger.WriteLog($"SyncEmp Success :{roundCounter} row");
+            SentEmail.SentToEmail();
            
         }
-
         static void ManageAccount(Wolfaccount wolfAccount)
         {
             string _ContactCode = ConfigurationManager.AppSettings["ContactCode"];
@@ -552,7 +542,6 @@ namespace SyncDataApp
                     GuidVerify = _GuidVerify
 
                 });
-
             }
             else
             {
